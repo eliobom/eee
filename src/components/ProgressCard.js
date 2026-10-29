@@ -9,21 +9,27 @@ const ProgressCard = ({ label, value, max, color = '#667eea', icon }) => {
     <View style={[styles.card, { borderLeftColor: color, borderLeftWidth: 4 }]}>
       <View style={styles.header}>
         <View style={styles.labelContainer}>
-          {icon && <Ionicons name={icon} size={18} color={color} style={styles.icon} />}
+          {icon && (
+            <Ionicons name={icon} size={18} color={color} style={styles.icon} />
+          )}
           <Text style={[styles.label, { color }]}>{label}</Text>
         </View>
-        <Text style={[styles.value, { color }]}>{value}/{max}</Text>
+        <Text style={[styles.value, { color }]}>
+          {value}/{max}
+        </Text>
       </View>
       <View style={styles.progressBarContainer}>
         <View
           style={[
             styles.progressBar,
-            { width: `${percentage}%`, backgroundColor: color }
+            { width: `${percentage}%`, backgroundColor: color },
           ]}
         />
       </View>
       <View style={styles.footer}>
-        <Text style={[styles.percentage, { color }]}>{Math.round(percentage)}% completado</Text>
+        <Text style={[styles.percentage, { color }]}>
+          {Math.round(percentage)}% completado
+        </Text>
         <Text style={styles.remaining}>
           {max - value > 0 ? `${max - value} restantes` : 'Completado'}
         </Text>

@@ -12,11 +12,17 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { apiClient } from '../apiClient';
-import { API_BASE_URL } from '../config';
-import NotificationService from '../services/NotificationService';
+import { supabase } from '../config';
+import { useAuth } from '../contexts/AuthContext';
 
-const LoginScreen = (props) => {
-  const { navigation, onLogin } = props;
+// Only import NotificationService on mobile platforms
+let NotificationService = null;
+if (Platform.OS !== 'web') {
+  NotificationService = require('../services/NotificationService').default;
+}
+
+const LoginScreen = ({ navigation }) => {
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,31 +39,21 @@ const LoginScreen = (props) => {
     setLoading(true);
     console.log('Mobile login attempt for username:', username);
     try {
+      // Mobile app authenticates against `app_users`.
       const data = await apiClient.login({ username, password });
 
-      console.log('Login successful, checking user role:', data.user.role);
-      // Check if user is an app user (not admin/trainer)
-      if (data.user.role !== 'user') {
-        console.log('User role is not "user", rejecting login');
-        Alert.alert('Error', 'Esta app es solo para usuarios finales');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Storing user data globally');
-      // Store user data
-      global.token = data.token;
-      global.user = data.user;
+      console.log('Login successful, storing user data');
+      // Store user data using auth context
+      login(data.user, data.token);
 
       // Register push token for notifications
       if (NotificationService.pushToken) {
         console.log('Registering push token for user:', data.user.id);
-        NotificationService.registerPushToken(data.user.id, NotificationService.pushToken);
+        NotificationService.registerPushToken(
+          data.user.id,
+          NotificationService.pushToken
+        );
       }
-
-      console.log('Calling onLogin callback');
-      // Call onLogin callback
-      onLogin(data.user);
 
       // Navigate to main app
       console.log('Navigating to MainApp');
@@ -73,36 +69,58 @@ const LoginScreen = (props) => {
     }
   };
 
-  const handleForgotPassword = () => {
+  const handleForgotPassword = async () => {
     if (!resetEmail) {
       Alert.alert('Error', 'Por favor ingresa tu email');
       return;
     }
-    Alert.alert('Éxito', 'Se ha enviado un enlace de recuperación a tu email');
+
+    try {
+      // Try Supabase password reset
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: 'trainwithmorale://reset-password',
+      });
+
+      if (error) throw error;
+
+      Alert.alert(
+        'Éxito',
+        'Se ha enviado un enlace de recuperación a tu email'
+      );
+    } catch (error) {
+      console.error('Password reset error:', error);
+      Alert.alert(
+        'Éxito',
+        'Se ha enviado un enlace de recuperación a tu email'
+      );
+    }
+
     setShowForgotPassword(false);
     setResetEmail('');
   };
 
   return (
-    <LinearGradient colors={['#0f0f23', '#1a1a2e', '#16213e']} style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.content}>
+    <LinearGradient
+      colors={['#0f0f23', '#1a1a2e', '#16213e']}
+      style={styles.container}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.content}
+      >
         <View style={styles.logoContainer}>
           <View style={styles.logoBackground}>
             <MaterialCommunityIcons name="dumbbell" size={60} color="#00d4aa" />
           </View>
-          <Text style={styles.title}>Train with Morale</Text>
+          <Text style={styles.title}>FitCoach</Text>
           <Text style={styles.subtitle}>Tu entrenador personal</Text>
         </View>
 
         <View style={styles.formContainer}>
           <Text style={styles.welcomeText}>¡Bienvenido de vuelta!</Text>
-          <Text style={styles.instructionText}>Ingresa tus credenciales para continuar</Text>
-
-          {__DEV__ && (
-            <Text style={styles.devApiText} numberOfLines={1}>
-              API: {API_BASE_URL}
-            </Text>
-          )}
+          <Text style={styles.instructionText}>
+            Ingresa tus credenciales para continuar
+          </Text>
 
           <View style={styles.inputContainer}>
             <View style={styles.inputIconContainer}>
@@ -130,7 +148,10 @@ const LoginScreen = (props) => {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeButton}
+            >
               <Ionicons
                 name={showPassword ? 'eye-off' : 'eye'}
                 size={20}
@@ -139,11 +160,20 @@ const LoginScreen = (props) => {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => setShowForgotPassword(true)} style={styles.forgotPasswordContainer}>
-            <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+          <TouchableOpacity
+            onPress={() => setShowForgotPassword(true)}
+            style={styles.forgotPasswordContainer}
+          >
+            <Text style={styles.forgotPasswordText}>
+              ¿Olvidaste tu contraseña?
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={handleLogin}
+            disabled={loading}
+          >
             <LinearGradient
               colors={loading ? ['#666', '#555'] : ['#00d4aa', '#00b894']}
               style={styles.loginButtonGradient}
@@ -153,7 +183,14 @@ const LoginScreen = (props) => {
               <Text style={styles.loginButtonText}>
                 {loading ? 'Iniciando...' : '🚀 Iniciar Sesión'}
               </Text>
-              {!loading && <Ionicons name="arrow-forward" size={20} color="#fff" style={styles.loginIcon} />}
+              {!loading && (
+                <Ionicons
+                  name="arrow-forward"
+                  size={20}
+                  color="#fff"
+                  style={styles.loginIcon}
+                />
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>

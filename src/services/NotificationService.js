@@ -2,23 +2,34 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { apiClient } from '../apiClient';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Configure notification handler only on mobile platforms
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 class NotificationService {
   constructor() {
-    this.configure();
+    // Only configure on mobile platforms
+    if (Platform.OS !== 'web') {
+      this.configure();
+    }
   }
 
   configure = async () => {
+    // Skip configuration on web
+    if (Platform.OS === 'web') {
+      return;
+    }
+
     // Request permissions
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
     if (existingStatus !== 'granted') {
@@ -160,4 +171,6 @@ class NotificationService {
   };
 }
 
-export default new NotificationService();
+// Only instantiate on mobile platforms
+const notificationService = Platform.OS !== 'web' ? new NotificationService() : null;
+export default notificationService;

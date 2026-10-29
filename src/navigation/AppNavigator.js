@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 
 // Import screens
 import LoginScreen from '../screens/LoginScreen';
@@ -18,7 +19,8 @@ const Stack = createStackNavigator();
 const Drawer = createDrawerNavigator();
 
 // Custom drawer content
-const CustomDrawerContent = ({ navigation, user, onLogout }) => {
+const CustomDrawerContent = ({ navigation, user }) => {
+  const { logout } = useAuth();
   const menuItems = [
     { name: 'Home', label: 'Inicio', icon: 'home' },
     { name: 'Classes', label: 'Clases', icon: 'book' },
@@ -35,14 +37,14 @@ const CustomDrawerContent = ({ navigation, user, onLogout }) => {
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Cerrar Sesión',
-          onPress: () => {
+          onPress: async () => {
             // Reset navigation to Login screen
             navigation.reset({
               index: 0,
               routes: [{ name: 'Login' }],
             });
-            onLogout();
-          }
+            await logout();
+          },
         },
       ]
     );
@@ -60,7 +62,13 @@ const CustomDrawerContent = ({ navigation, user, onLogout }) => {
       <View style={styles.userInfo}>
         <Ionicons name="person-circle" size={50} color="#4c669f" />
         <Text style={styles.userName}>{user?.full_name || 'Usuario'}</Text>
-        <Text style={styles.userRole}>{user?.role === 'user' ? 'Usuario' : user?.role === 'trainer' ? 'Entrenador' : 'Admin'}</Text>
+        <Text style={styles.userRole}>
+          {user?.role === 'user'
+            ? 'Usuario'
+            : user?.role === 'trainer'
+              ? 'Entrenador'
+              : 'Admin'}
+        </Text>
       </View>
 
       {/* Menu Items */}
@@ -89,7 +97,7 @@ const CustomDrawerContent = ({ navigation, user, onLogout }) => {
 };
 
 // Main stack navigator for authenticated screens
-const MainStack = ({ user, onLogout }) => {
+const MainStack = () => {
   return (
     <Stack.Navigator
       initialRouteName="Home"
@@ -111,23 +119,45 @@ const MainStack = ({ user, onLogout }) => {
         ),
       })}
     >
-      <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Inicio' }} />
-      <Stack.Screen name="Classes" component={ClassesScreen} options={{ title: 'Clases' }} />
-      <Stack.Screen name="ClassDetail" component={ClassDetailScreen} options={{ title: 'Detalle de Clase' }} />
-      <Stack.Screen name="Tasks" component={TasksScreen} options={{ title: 'Tareas' }} />
-      <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
-      <Stack.Screen name="LiveClasses" component={LiveClassesScreen} options={{ title: 'Clases en Vivo' }} />
+      <Stack.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ title: 'Inicio' }}
+      />
+      <Stack.Screen
+        name="Classes"
+        component={ClassesScreen}
+        options={{ title: 'Clases' }}
+      />
+      <Stack.Screen
+        name="ClassDetail"
+        component={ClassDetailScreen}
+        options={{ title: 'Detalle de Clase' }}
+      />
+      <Stack.Screen
+        name="Tasks"
+        component={TasksScreen}
+        options={{ title: 'Tareas' }}
+      />
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: 'Perfil' }}
+      />
+      <Stack.Screen
+        name="LiveClasses"
+        component={LiveClassesScreen}
+        options={{ title: 'Clases en Vivo' }}
+      />
     </Stack.Navigator>
   );
 };
 
 // Drawer navigator
-const DrawerNavigator = ({ user, onLogout }) => {
+const DrawerNavigator = ({ user }) => {
   return (
     <Drawer.Navigator
-      drawerContent={(props) => (
-        <CustomDrawerContent {...props} user={user} onLogout={onLogout} />
-      )}
+      drawerContent={(props) => <CustomDrawerContent {...props} user={user} />}
       screenOptions={{
         headerShown: false,
       }}
@@ -137,20 +167,26 @@ const DrawerNavigator = ({ user, onLogout }) => {
   );
 };
 
-const AppNavigator = ({ user, onLogin, onLogout }) => {
+const AppNavigator = () => {
+  const { user, login, logout, isLoading } = useAuth();
+
+  // Always show Login initially, navigate to MainApp after login
+  // This prevents blank screen while auth context loads
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={user ? "MainApp" : "Login"}
+        initialRouteName="Login"
         screenOptions={{
           headerShown: false,
         }}
       >
         <Stack.Screen name="Login">
-          {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+          {(props) => <LoginScreen {...props} onLogin={login} />}
         </Stack.Screen>
         <Stack.Screen name="MainApp">
-          {(props) => <DrawerNavigator {...props} user={user} onLogout={onLogout} />}
+          {(props) => (
+            <DrawerNavigator {...props} user={user} onLogout={logout} />
+          )}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

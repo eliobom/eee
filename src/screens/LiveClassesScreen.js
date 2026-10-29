@@ -1,12 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Linking,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
-import { API_BASE_URL } from '../config';
+import { apiClient } from '../apiClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const LiveClassesScreen = () => {
+  const { user } = useAuth();
   const [selectedClass, setSelectedClass] = useState(null);
 
   const [liveClasses, setLiveClasses] = useState([]);
@@ -15,25 +25,10 @@ const LiveClassesScreen = () => {
   const fetchLiveClasses = async () => {
     setLoading(true);
     try {
-      const token = global.token;
-      const response = await fetch(`${API_BASE_URL}/live-classes`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        Alert.alert('Error', err?.error || 'No se pudieron cargar las clases en vivo');
-        setLiveClasses([]);
-        return;
-      }
-
-      const data = await response.json();
-      setLiveClasses(Array.isArray(data) ? data : []);
+      const classesData = await apiClient.getSupabaseLiveClasses();
+      setLiveClasses(Array.isArray(classesData) ? classesData : []);
     } catch (error) {
       console.error('Error fetching live classes:', error);
-      Alert.alert('Error', 'Error de conexión');
       setLiveClasses([]);
     } finally {
       setLoading(false);
@@ -41,8 +36,11 @@ const LiveClassesScreen = () => {
   };
 
   useEffect(() => {
-    fetchLiveClasses();
-  }, []);
+    if (user) {
+      apiClient.setCurrentUser(user);
+      fetchLiveClasses();
+    }
+  }, [user]);
 
   const openMeeting = async (meetingUrl) => {
     if (!meetingUrl) {
@@ -66,9 +64,13 @@ const LiveClassesScreen = () => {
     const colors = ['#ff6b6b', '#667eea', '#4ecdc4', '#f59e0b', '#ec4899'];
     return liveClasses.map((c, idx) => {
       const scheduled = c?.scheduled_at ? new Date(c.scheduled_at) : null;
-      const time = scheduled && !Number.isNaN(scheduled.getTime())
-        ? scheduled.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '--:--';
+      const time =
+        scheduled && !Number.isNaN(scheduled.getTime())
+          ? scheduled.toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '--:--';
 
       const status = c?.status === 'live' ? 'En Vivo' : 'Próxima';
 
@@ -78,7 +80,9 @@ const LiveClassesScreen = () => {
         instructor: c.trainer_name || 'Entrenador',
         startTime: time,
         duration: c.duration || 45,
-        participants: Array.isArray(c.enrolled_users) ? c.enrolled_users.length : 0,
+        participants: Array.isArray(c.enrolled_users)
+          ? c.enrolled_users.length
+          : 0,
         status,
         color: colors[idx % colors.length],
         meeting_url: c.meeting_url,
@@ -87,15 +91,18 @@ const LiveClassesScreen = () => {
   }, [liveClasses]);
 
   const upcomingClasses = useMemo(() => {
-    return uiClasses.filter(c => c.status === 'Próxima');
+    return uiClasses.filter((c) => c.status === 'Próxima');
   }, [uiClasses]);
 
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <Header 
-            title="Clases en Vivo" 
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <Header
+            title="Clases en Vivo"
             subtitle="Únete a sesiones en tiempo real"
           />
 
@@ -108,39 +115,65 @@ const LiveClassesScreen = () => {
 
             {loading ? (
               <Text style={styles.emptyText}>Cargando clases...</Text>
-            ) : uiClasses.filter(c => c.status === 'En Vivo').length === 0 ? (
+            ) : uiClasses.filter((c) => c.status === 'En Vivo').length === 0 ? (
               <Text style={styles.emptyText}>No hay clases en vivo</Text>
-            ) : uiClasses.filter(c => c.status === 'En Vivo').map((liveClass) => (
-              <TouchableOpacity 
-                key={liveClass.id}
-                style={[styles.liveCard, { borderLeftColor: liveClass.color }]}
-                onPress={() => setSelectedClass(liveClass.id)}
-              >
-                <View style={[styles.liveIndicator, { backgroundColor: liveClass.color }]}>
-                  <Text style={styles.liveText}>EN VIVO</Text>
-                </View>
-                <View style={styles.liveContent}>
-                  <Text style={styles.liveTitle}>{liveClass.title}</Text>
-                  <Text style={styles.liveInstructor}>{liveClass.instructor}</Text>
-                  <View style={styles.liveFooter}>
-                    <View style={styles.liveInfo}>
-                      <Ionicons name="people" size={14} color="rgba(255, 255, 255, 0.7)" />
-                      <Text style={styles.liveInfoText}>{liveClass.participants} participantes</Text>
+            ) : (
+              uiClasses
+                .filter((c) => c.status === 'En Vivo')
+                .map((liveClass) => (
+                  <TouchableOpacity
+                    key={liveClass.id}
+                    style={[
+                      styles.liveCard,
+                      { borderLeftColor: liveClass.color },
+                    ]}
+                    onPress={() => setSelectedClass(liveClass.id)}
+                  >
+                    <View
+                      style={[
+                        styles.liveIndicator,
+                        { backgroundColor: liveClass.color },
+                      ]}
+                    >
+                      <Text style={styles.liveText}>EN VIVO</Text>
                     </View>
-                    <View style={styles.liveInfo}>
-                      <Ionicons name="time" size={14} color="rgba(255, 255, 255, 0.7)" />
-                      <Text style={styles.liveInfoText}>{liveClass.duration} min</Text>
+                    <View style={styles.liveContent}>
+                      <Text style={styles.liveTitle}>{liveClass.title}</Text>
+                      <Text style={styles.liveInstructor}>
+                        {liveClass.instructor}
+                      </Text>
+                      <View style={styles.liveFooter}>
+                        <View style={styles.liveInfo}>
+                          <Ionicons
+                            name="people"
+                            size={14}
+                            color="rgba(255, 255, 255, 0.7)"
+                          />
+                          <Text style={styles.liveInfoText}>
+                            {liveClass.participants} participantes
+                          </Text>
+                        </View>
+                        <View style={styles.liveInfo}>
+                          <Ionicons
+                            name="time"
+                            size={14}
+                            color="rgba(255, 255, 255, 0.7)"
+                          />
+                          <Text style={styles.liveInfoText}>
+                            {liveClass.duration} min
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.joinButton}
-                  onPress={() => openMeeting(liveClass.meeting_url)}
-                >
-                  <Ionicons name="play" size={24} color="#fff" />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
+                    <TouchableOpacity
+                      style={styles.joinButton}
+                      onPress={() => openMeeting(liveClass.meeting_url)}
+                    >
+                      <Ionicons name="play" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))
+            )}
           </View>
 
           {/* Upcoming Classes Section */}
@@ -154,25 +187,44 @@ const LiveClassesScreen = () => {
               <Text style={styles.emptyText}>Cargando clases...</Text>
             ) : upcomingClasses.length === 0 ? (
               <Text style={styles.emptyText}>No hay clases programadas</Text>
-            ) : upcomingClasses.map((upcomingClass) => (
-              <TouchableOpacity 
-                key={upcomingClass.id}
-                style={styles.upcomingCard}
-                onPress={() => setSelectedClass(upcomingClass.id)}
-              >
-                <View style={[styles.upcomingTime, { backgroundColor: upcomingClass.color }]}>
-                  <Text style={styles.upcomingHour}>{upcomingClass.startTime}</Text>
-                </View>
-                <View style={styles.upcomingContent}>
-                  <Text style={styles.upcomingTitle}>{upcomingClass.title}</Text>
-                  <Text style={styles.upcomingInstructor}>{upcomingClass.instructor}</Text>
-                </View>
-                <View style={styles.upcomingDuration}>
-                  <Ionicons name="time" size={16} color="rgba(255, 255, 255, 0.6)" />
-                  <Text style={styles.upcomingDurationText}>{upcomingClass.duration} min</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+            ) : (
+              upcomingClasses.map((upcomingClass) => (
+                <TouchableOpacity
+                  key={upcomingClass.id}
+                  style={styles.upcomingCard}
+                  onPress={() => setSelectedClass(upcomingClass.id)}
+                >
+                  <View
+                    style={[
+                      styles.upcomingTime,
+                      { backgroundColor: upcomingClass.color },
+                    ]}
+                  >
+                    <Text style={styles.upcomingHour}>
+                      {upcomingClass.startTime}
+                    </Text>
+                  </View>
+                  <View style={styles.upcomingContent}>
+                    <Text style={styles.upcomingTitle}>
+                      {upcomingClass.title}
+                    </Text>
+                    <Text style={styles.upcomingInstructor}>
+                      {upcomingClass.instructor}
+                    </Text>
+                  </View>
+                  <View style={styles.upcomingDuration}>
+                    <Ionicons
+                      name="time"
+                      size={16}
+                      color="rgba(255, 255, 255, 0.6)"
+                    />
+                    <Text style={styles.upcomingDurationText}>
+                      {upcomingClass.duration} min
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
 
           {/* Reminder Section */}
@@ -181,7 +233,9 @@ const LiveClassesScreen = () => {
               <Ionicons name="notifications" size={24} color="#667eea" />
               <View style={styles.reminderContent}>
                 <Text style={styles.reminderTitle}>Activa notificaciones</Text>
-                <Text style={styles.reminderSubtitle}>Recibe recordatorios de tus clases favoritas</Text>
+                <Text style={styles.reminderSubtitle}>
+                  Recibe recordatorios de tus clases favoritas
+                </Text>
               </View>
               <TouchableOpacity style={styles.reminderButton}>
                 <Ionicons name="chevron-forward" size={20} color="#667eea" />

@@ -1,32 +1,57 @@
 {
-  "name": "mobile",
+  "name": "fitcoach",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "format": "prettier --write .",
+    "update:preview": "eas update --branch preview --message",
+    "update:production": "eas update --branch production --message"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/drawer": "^7.7.9",
     "@react-navigation/native": "^7.1.24",
     "@react-navigation/stack": "^7.6.11",
     "@supabase/supabase-js": "^2.86.0",
     "bcryptjs": "^3.0.3",
-    "expo": "~54.0.29",
+    "expo": "~54.0.35",
+    "expo-av": "~16.0.8",
+    "expo-constants": "~18.0.13",
+    "expo-font": "~14.0.12",
     "expo-linear-gradient": "^15.0.8",
-    "expo-notifications": "~0.32.15",
+    "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.20",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-reanimated": "~4.1.1",
-    "react-native-safe-area-context": "^5.6.2",
+    "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-web": "^0.21.0",
+    "react-native-web-webview": "^1.0.2",
+    "react-native-webview": "13.15.0",
+    "react-native-worklets": "0.5.1",
+    "react-native-youtube-iframe": "^2.4.1"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-native": "^5.0.0",
+    "prettier": "^3.8.3"
+  }
 }

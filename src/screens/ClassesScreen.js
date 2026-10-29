@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import ClassCard from '../components/ClassCard';
 import SearchBar from '../components/SearchBar';
-import { API_BASE_URL } from '../config';
+import { apiClient } from '../apiClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const ClassesScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState([]);
@@ -18,35 +27,31 @@ const ClassesScreen = ({ navigation }) => {
   const categories = ['Todos', 'Cardio', 'Fuerza', 'Flexibilidad', 'Yoga'];
 
   useEffect(() => {
-    fetchClasses();
-  }, []);
+    if (user) {
+      apiClient.setCurrentUser(user);
+      fetchClasses();
+    }
+  }, [user]);
 
   const fetchClasses = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/classes`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const classesData = await apiClient.getSupabaseClasses();
 
-      if (response.ok) {
-        const classesData = await response.json();
-        // Transform backend data to match frontend format
-        const transformedClasses = classesData.map((cls, index) => ({
-          id: cls.id,
-          title: cls.title || 'Clase sin título',
-          instructor: cls.trainer_name || 'Entrenador',
-          duration: cls.duration || 45,
-          level: cls.difficulty || 'Intermedio',
-          thumbnail: ['#ff6b6b', '#4ecdc4', '#667eea', '#f59e0b', '#ec4899'][index % 5],
-          category: cls.category || 'General',
-        }));
-        setClasses(transformedClasses);
-      } else {
-        console.error('Error fetching classes:', response.status);
-      }
+      // Transform Supabase data to match frontend format
+      const transformedClasses = classesData.map((cls, index) => ({
+        id: cls.id,
+        title: cls.title || 'Clase sin título',
+        instructor: cls.instructor_name || 'Entrenador',
+        duration: cls.duration || 45,
+        level: cls.level || 'Intermedio',
+        thumbnail: ['#ff6b6b', '#4ecdc4', '#667eea', '#f59e0b', '#ec4899'][
+          index % 5
+        ],
+        category: cls.category || 'General',
+        video_url: cls.video_url || null,
+      }));
+      setClasses(transformedClasses);
     } catch (error) {
       console.error('Error fetching classes:', error);
     } finally {
@@ -54,17 +59,19 @@ const ClassesScreen = ({ navigation }) => {
     }
   };
 
-  const filteredClasses = classes.filter(c => {
-    const matchesCategory = selectedCategory === 'Todos' || c.category === selectedCategory;
-    const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          c.instructor.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredClasses = classes.filter((c) => {
+    const matchesCategory =
+      selectedCategory === 'Todos' || c.category === selectedCategory;
+    const matchesSearch =
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.instructor.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
 
   const toggleFavorite = (classId) => {
-    setFavorites(prev =>
+    setFavorites((prev) =>
       prev.includes(classId)
-        ? prev.filter(id => id !== classId)
+        ? prev.filter((id) => id !== classId)
         : [...prev, classId]
     );
   };
@@ -72,11 +79,8 @@ const ClassesScreen = ({ navigation }) => {
   return (
     <LinearGradient colors={['#ff6b6b', '#ff8787']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Header 
-          title="Mis Clases" 
-          subtitle="Elige una clase para comenzar"
-        />
-        
+        <Header title="Mis Clases" subtitle="Elige una clase para comenzar" />
+
         {/* Search Bar */}
         <SearchBar
           value={searchQuery}
@@ -85,14 +89,14 @@ const ClassesScreen = ({ navigation }) => {
           onClear={() => setSearchQuery('')}
         />
 
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
         >
           {/* Categories */}
           <View style={styles.categoriesContainer}>
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.categoriesScroll}
             >
@@ -101,14 +105,16 @@ const ClassesScreen = ({ navigation }) => {
                   key={index}
                   style={[
                     styles.categoryButton,
-                    selectedCategory === category && styles.categoryButtonActive,
+                    selectedCategory === category &&
+                      styles.categoryButtonActive,
                   ]}
                   onPress={() => setSelectedCategory(category)}
                 >
                   <Text
                     style={[
                       styles.categoryText,
-                      selectedCategory === category && styles.categoryTextActive,
+                      selectedCategory === category &&
+                        styles.categoryTextActive,
                     ]}
                   >
                     {category}
@@ -134,25 +140,42 @@ const ClassesScreen = ({ navigation }) => {
                     duration={classItem.duration}
                     level={classItem.level}
                     thumbnail={classItem.thumbnail}
-                    onPress={() => navigation.navigate('ClassDetail', { classData: classItem })}
+                    video_url={classItem.video_url}
+                    onPress={() =>
+                      navigation.navigate('ClassDetail', {
+                        classData: classItem,
+                      })
+                    }
                   />
                   <TouchableOpacity
                     style={styles.favoriteIcon}
                     onPress={() => toggleFavorite(classItem.id)}
                   >
                     <Ionicons
-                      name={favorites.includes(classItem.id) ? 'heart' : 'heart-outline'}
+                      name={
+                        favorites.includes(classItem.id)
+                          ? 'heart'
+                          : 'heart-outline'
+                      }
                       size={24}
-                      color={favorites.includes(classItem.id) ? '#ef4444' : '#fff'}
+                      color={
+                        favorites.includes(classItem.id) ? '#ef4444' : '#fff'
+                      }
                     />
                   </TouchableOpacity>
                 </View>
               ))
             ) : (
               <View style={styles.emptyState}>
-                <Ionicons name="search" size={50} color="rgba(255, 255, 255, 0.5)" />
+                <Ionicons
+                  name="search"
+                  size={50}
+                  color="rgba(255, 255, 255, 0.5)"
+                />
                 <Text style={styles.emptyStateText}>
-                  {searchQuery ? 'No se encontraron clases' : 'No hay clases disponibles'}
+                  {searchQuery
+                    ? 'No se encontraron clases'
+                    : 'No hay clases disponibles'}
                 </Text>
               </View>
             )}

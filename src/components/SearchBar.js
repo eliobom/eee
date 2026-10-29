@@ -2,7 +2,12 @@ import React from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const SearchBar = ({ value, onChangeText, placeholder = 'Buscar...', onClear }) => {
+const SearchBar = ({
+  value,
+  onChangeText,
+  placeholder = 'Buscar...',
+  onClear,
+}) => {
   return (
     <View style={styles.container}>
       <Ionicons name="search" size={18} color="#999" style={styles.icon} />

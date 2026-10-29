@@ -1,18 +1,20 @@
-// API Configuration
-import { NativeModules } from 'react-native';
+// Supabase Configuration
+import Constants from 'expo-constants';
+import { supabase } from './supabaseClient';
 
-const devHost = (() => {
-  const scriptURL = NativeModules?.SourceCode?.scriptURL;
-  if (typeof scriptURL !== 'string') return 'localhost';
+// Supabase Configuration
+export const SUPABASE_URL =
+  Constants.expoConfig?.extra?.supabaseUrl ||
+  process.env.EXPO_PUBLIC_SUPABASE_URL;
+export const SUPABASE_ANON_KEY =
+  Constants.expoConfig?.extra?.supabaseAnonKey ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const JWT_SECRET = process.env.JWT_SECRET;
 
-  const match = scriptURL.match(/^https?:\/\/([^/:]+)(?::\d+)?\//);
-  return match?.[1] || 'localhost';
-})();
+// Server Configuration
+export const SERVER_PORT = 3000;
+export const NODE_ENV = 'development';
 
-export const API_BASE_URL = __DEV__
-  ? `http://localhost:3000`  // Development - use localhost for Expo simulator
-  : 'https://your-production-api.com';  // Production URL
-
-// For Expo development on physical device/simulator, replace localhost with your computer's IP
-// Find your IP: ifconfig (macOS/Linux) or ipconfig (Windows)
-// Example: 'http://192.168.1.100:3000' or 'http://10.0.0.100:3000'
+// Export Supabase client for use throughout the app
+export { supabase };

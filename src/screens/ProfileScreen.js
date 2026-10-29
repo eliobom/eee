@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../components/Header';
 import ProgressCard from '../components/ProgressCard';
-import { API_BASE_URL } from '../config';
+import { apiClient } from '../apiClient';
+import { supabase } from '../config';
 
 const ProfileScreen = () => {
   const [userProfile, setUserProfile] = useState(null);
@@ -16,12 +24,7 @@ const ProfileScreen = () => {
   ]);
   const [loading, setLoading] = useState(true);
 
-  const achievements = [
-    { id: 1, icon: 'star', title: 'Principiante', description: 'Completa tu 1ª tarea' },
-    { id: 2, icon: 'flame', title: 'En Racha', description: '7 días consecutivos' },
-    { id: 3, icon: 'trophy', title: 'Campeón', description: '50 tareas completadas' },
-    { id: 4, icon: 'heart', title: 'Dedicado', description: '100 horas entrenadas' },
-  ];
+  const achievements = [];
 
   useEffect(() => {
     fetchUserProfile();
@@ -31,38 +34,34 @@ const ProfileScreen = () => {
     try {
       setLoading(true);
 
-      // Fetch user profile
-      const profileResponse = await fetch(`${API_BASE_URL}/profile`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
+      // Fetch user profile from Supabase
+      try {
+        const profileData = await apiClient.getSupabaseProfile();
         setUserProfile(profileData);
+      } catch (profileError) {
+        console.error('Error fetching profile:', profileError);
       }
 
-      // Fetch user tasks for stats
-      const tasksResponse = await fetch(`${API_BASE_URL}/tasks`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (tasksResponse.ok) {
-        const tasksData = await tasksResponse.json();
-        const completedTasks = tasksData.filter(task => task.status === 'completed').length;
+      // Fetch user tasks for stats from Supabase
+      try {
+        const tasksData = await apiClient.getSupabaseTasks();
+        const completedTasks = tasksData.filter(
+          (task) => task.status === 'completed'
+        ).length;
 
         setUserStats([
-          { label: 'Tareas Completadas', value: completedTasks, max: Math.max(tasksData.length, 10), color: '#667eea' },
-          { label: 'Racha Actual', value: 0, max: 30, color: '#10b981' }, // TODO: calculate streak
-          { label: 'Minutos Entrenados', value: 0, max: 300, color: '#f59e0b' }, // TODO: calculate from measurements
+          {
+            label: 'Tareas Completadas',
+            value: completedTasks,
+            max: Math.max(tasksData.length, 10),
+            color: '#667eea',
+          },
+          { label: 'Racha Actual', value: 0, max: 30, color: '#10b981' },
+          { label: 'Minutos Entrenados', value: 0, max: 300, color: '#f59e0b' },
         ]);
+      } catch (tasksError) {
+        console.log('No tasks from Supabase');
       }
-
     } catch (error) {
       console.error('Error fetching user profile:', error);
     } finally {
@@ -80,9 +79,12 @@ const ProfileScreen = () => {
   return (
     <LinearGradient colors={['#f093fb', '#f5576c']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <Header 
-            title="Mi Perfil" 
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <Header
+            title="Mi Perfil"
             subtitle="Información personal y progreso"
           />
 
@@ -92,7 +94,9 @@ const ProfileScreen = () => {
               <Ionicons name="person-circle" size={80} color="#fff" />
             </View>
             <Text style={styles.userName}>
-              {userProfile ? userProfile.full_name || userProfile.username : 'Cargando...'}
+              {userProfile
+                ? userProfile.full_name || userProfile.username
+                : 'Cargando...'}
             </Text>
             <Text style={styles.userEmail}>
               {userProfile ? userProfile.email || '' : ''}
@@ -121,15 +125,32 @@ const ProfileScreen = () => {
           <View style={styles.achievementsSection}>
             <Text style={styles.sectionTitle}>Logros</Text>
             <View style={styles.achievementsGrid}>
-              {achievements.map((achievement) => (
-                <View key={achievement.id} style={styles.achievementCard}>
-                  <View style={styles.achievementIcon}>
-                    <Ionicons name={achievement.icon} size={28} color="#f59e0b" />
-                  </View>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                  <Text style={styles.achievementDescription}>{achievement.description}</Text>
+              {achievements.length === 0 ? (
+                <View style={[styles.achievementCard, { width: '100%' }]}>
+                  <Text style={styles.achievementTitle}>Sin logros aún</Text>
+                  <Text style={styles.achievementDescription}>
+                    Completa tareas para desbloquear logros.
+                  </Text>
                 </View>
-              ))}
+              ) : (
+                achievements.map((achievement) => (
+                  <View key={achievement.id} style={styles.achievementCard}>
+                    <View style={styles.achievementIcon}>
+                      <Ionicons
+                        name={achievement.icon}
+                        size={28}
+                        color="#f59e0b"
+                      />
+                    </View>
+                    <Text style={styles.achievementTitle}>
+                      {achievement.title}
+                    </Text>
+                    <Text style={styles.achievementDescription}>
+                      {achievement.description}
+                    </Text>
+                  </View>
+                ))
+              )}
             </View>
           </View>
 
@@ -137,7 +158,9 @@ const ProfileScreen = () => {
           <View style={styles.menuSection}>
             {menuItems.map((item, index) => (
               <TouchableOpacity key={index} style={styles.menuItem}>
-                <View style={[styles.menuIcon, { backgroundColor: item.color }]}>
+                <View
+                  style={[styles.menuIcon, { backgroundColor: item.color }]}
+                >
                   <Ionicons name={item.icon} size={20} color="#fff" />
                 </View>
                 <Text style={styles.menuLabel}>{item.label}</Text>

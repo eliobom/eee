@@ -2,9 +2,16 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const CommentCard = ({ author = 'Usuario Anónimo', rating = 0, text = '', date = 'Fecha desconocida' }) => {
+const CommentCard = ({
+  author = 'Usuario Anónimo',
+  rating = 0,
+  text = '',
+  date = 'Fecha desconocida',
+}) => {
   // Debug logs for potential null/undefined values
   console.log('CommentCard rendered with:', { author, rating, text, date });
+
+  const avatarInitial = author ? author.charAt(0).toUpperCase() : 'U';
 
   const renderStars = (rating) => {
     return Array(5)

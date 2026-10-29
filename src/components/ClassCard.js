@@ -1,8 +1,17 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import VideoPlayer from './VideoPlayer';
 
-const ClassCard = ({ title, instructor, duration, level, thumbnail, onPress }) => {
+const ClassCard = ({
+  title,
+  instructor,
+  duration,
+  level,
+  video_url,
+  thumbnail,
+  onPress,
+}) => {
   const getLevelColor = (level) => {
     switch (level) {
       case 'Principiante':
@@ -19,19 +28,34 @@ const ClassCard = ({ title, instructor, duration, level, thumbnail, onPress }) =
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
       <View style={styles.thumbnailContainer}>
-        <View style={[styles.thumbnail, { backgroundColor: thumbnail }]}>
-          <Ionicons name="play-circle" size={50} color="#fff" />
-        </View>
+        {video_url ? (
+          <VideoPlayer
+            videoUrl={video_url}
+            title={title}
+            style={styles.videoPlayer}
+          />
+        ) : (
+          <View style={[styles.thumbnail, { backgroundColor: thumbnail }]}>
+            <Ionicons name="play-circle" size={50} color="#fff" />
+          </View>
+        )}
       </View>
       <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={2}>{title}</Text>
+        <Text style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
         <Text style={styles.instructor}>{instructor}</Text>
         <View style={styles.footer}>
           <View style={styles.infoRow}>
             <Ionicons name="time" size={14} color="#666" />
             <Text style={styles.info}>{duration} min</Text>
           </View>
-          <View style={[styles.levelBadge, { backgroundColor: getLevelColor(level) }]}>
+          <View
+            style={[
+              styles.levelBadge,
+              { backgroundColor: getLevelColor(level) },
+            ]}
+          >
             <Text style={styles.levelText}>{level}</Text>
           </View>
         </View>
@@ -55,6 +79,9 @@ const styles = StyleSheet.create({
   thumbnailContainer: {
     height: 150,
     backgroundColor: '#f0f0f0',
+  },
+  videoPlayer: {
+    height: 150,
   },
   thumbnail: {
     flex: 1,

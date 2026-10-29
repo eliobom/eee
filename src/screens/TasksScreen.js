@@ -8,18 +8,28 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 import Header from '../components/Header';
 import TaskCard from '../components/TaskCard';
-import { API_BASE_URL } from '../config';
+import VideoPlayer from '../components/VideoPlayer';
+import { apiClient } from '../apiClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const TasksScreen = () => {
+  const { user } = useAuth();
+
   const [measurements, setMeasurements] = useState({
+    weight: '',
+    height: '',
+    chestPerimeter: '',
+    waistPerimeter: '',
+    hipPerimeter: '',
     legPerimeter: '',
-    upperBodyPerimeter: '',
     armPerimeter: '',
   });
 
@@ -27,31 +37,30 @@ const TasksScreen = () => {
   const [loading, setLoading] = useState(true);
   const [savingMeasurements, setSavingMeasurements] = useState(false);
 
-  // Fetch tasks from backend
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [taskAttachments, setTaskAttachments] = useState([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+
+  const [webUrl, setWebUrl] = useState(null);
+  const [webOpen, setWebOpen] = useState(false);
+
+  // Fetch tasks from Supabase
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (user) {
+      apiClient.setCurrentUser(user);
+      fetchTasks();
+    }
+  }, [user]);
 
   const fetchTasks = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tasks`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const tasksData = await response.json();
-        setTasks(tasksData);
-      } else {
-        console.error('Error fetching tasks:', response.status);
-        Alert.alert('Error', 'No se pudieron cargar las tareas');
-      }
+      setLoading(true);
+      const tasksData = await apiClient.getSupabaseTasks();
+      setTasks(tasksData);
     } catch (error) {
       console.error('Error fetching tasks:', error);
-      Alert.alert('Error', 'Error de conexión al cargar tareas');
+      Alert.alert('Error', 'No se pudieron cargar las tareas');
     } finally {
       setLoading(false);
     }
@@ -59,70 +68,73 @@ const TasksScreen = () => {
 
   const updateTaskStatus = async (taskId, completed) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: completed ? 'completed' : 'pending',
-          completed_at: completed ? new Date().toISOString() : null,
-        }),
-      });
-
-      if (!response.ok) {
-        console.error('Error updating task:', response.status);
-        Alert.alert('Error', 'No se pudo actualizar la tarea');
-        return false;
-      }
+      await apiClient.updateSupabaseTaskStatus(
+        taskId,
+        completed ? 'completed' : 'pending'
+      );
       return true;
     } catch (error) {
       console.error('Error updating task:', error);
-      Alert.alert('Error', 'Error de conexión al actualizar tarea');
+      Alert.alert('Error', 'No se pudo actualizar la tarea');
       return false;
     }
   };
 
   const handleSave = async () => {
-    if (!measurements.legPerimeter || !measurements.upperBodyPerimeter || !measurements.armPerimeter) {
+    // Validar campos obligatorios
+    if (
+      !measurements.weight ||
+      !measurements.height ||
+      !measurements.chestPerimeter ||
+      !measurements.waistPerimeter ||
+      !measurements.hipPerimeter ||
+      !measurements.legPerimeter ||
+      !measurements.armPerimeter
+    ) {
       Alert.alert('Error', 'Por favor completa todos los campos');
+      return;
+    }
+
+    // Validar rangos razonables
+    const weight = parseFloat(measurements.weight);
+    const height = parseFloat(measurements.height);
+    
+    if (weight < 20 || weight > 300) {
+      Alert.alert('Error', 'El peso debe estar entre 20 y 300 kg');
+      return;
+    }
+    
+    if (height < 100 || height > 250) {
+      Alert.alert('Error', 'La altura debe estar entre 100 y 250 cm');
       return;
     }
 
     setSavingMeasurements(true);
     try {
-      const measurementData = {
-        user_id: global.user.id,
+      // Save using the apiClient method
+      await apiClient.saveMeasurement({
+        weight: weight,
+        height: height,
+        chest_perimeter: parseFloat(measurements.chestPerimeter),
+        waist_perimeter: parseFloat(measurements.waistPerimeter),
+        hip_perimeter: parseFloat(measurements.hipPerimeter),
         thigh_perimeter: parseFloat(measurements.legPerimeter),
-        chest_perimeter: parseFloat(measurements.upperBodyPerimeter),
         bicep_perimeter: parseFloat(measurements.armPerimeter),
-        measured_at: new Date().toISOString(),
-      };
-
-      const response = await fetch(`${API_BASE_URL}/measurements`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(measurementData),
       });
 
-      if (response.ok) {
-        Alert.alert('Éxito', 'Medidas guardadas correctamente');
-        setMeasurements({
-          legPerimeter: '',
-          upperBodyPerimeter: '',
-          armPerimeter: '',
-        });
-      } else {
-        console.error('Error saving measurements:', response.status);
-        Alert.alert('Error', 'No se pudieron guardar las medidas');
-      }
+      Alert.alert('Éxito', 'Medidas guardadas correctamente');
+      setMeasurements({
+        weight: '',
+        height: '',
+        chestPerimeter: '',
+        waistPerimeter: '',
+        hipPerimeter: '',
+        legPerimeter: '',
+        armPerimeter: '',
+      });
     } catch (error) {
       console.error('Error saving measurements:', error);
-      Alert.alert('Error', 'Error de conexión al guardar medidas');
+      Alert.alert('Error', 'No se pudieron guardar las medidas');
     } finally {
       setSavingMeasurements(false);
     }
@@ -130,45 +142,114 @@ const TasksScreen = () => {
 
   const toggleTaskCompletion = async (id) => {
     // Optimistically update UI
-    const task = tasks.find(t => t.id === id);
+    const task = tasks.find((t) => t.id === id);
     if (!task) return;
 
-    const newCompleted = !task.completed;
-    setTasks(tasks.map(t =>
-      t.id === id ? { ...t, status: newCompleted ? 'completed' : 'pending' } : t
-    ));
+    const newCompleted = task.status !== 'completed';
+    setTasks(
+      tasks.map((t) =>
+        t.id === id
+          ? { ...t, status: newCompleted ? 'completed' : 'pending' }
+          : t
+      )
+    );
 
     // Update backend
     const success = await updateTaskStatus(id, newCompleted);
     if (!success) {
       // Revert on failure
-      setTasks(tasks.map(t =>
-        t.id === id ? { ...t, status: task.status } : t
-      ));
+      setTasks(
+        tasks.map((t) => (t.id === id ? { ...t, status: task.status } : t))
+      );
+      if (selectedTask?.id === id) {
+        setSelectedTask((prev) =>
+          prev ? { ...prev, status: task.status } : prev
+        );
+      }
+      return;
+    }
+
+    // Keep selectedTask in sync
+    if (selectedTask?.id === id) {
+      setSelectedTask((prev) =>
+        prev
+          ? { ...prev, status: newCompleted ? 'completed' : 'pending' }
+          : prev
+      );
+    }
+
+    // Refresh from backend to ensure we are consistent
+    try {
+      const tasksData = await apiClient.getSupabaseTasks();
+      setTasks(tasksData);
+      if (selectedTask?.id === id) {
+        const updated = (tasksData || []).find((t) => t.id === id);
+        if (updated) setSelectedTask(updated);
+      }
+    } catch {
+      // ignore
     }
   };
 
-  const completedCount = tasks.filter(t => t.status === 'completed').length;
-  const completionPercentage = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+  const openTaskDetail = async (task) => {
+    setSelectedTask(task);
+    setTaskDetailOpen(true);
+    // Fetch task attachments
+    try {
+      setLoadingAttachments(true);
+      const attachments = await apiClient.getTaskAttachments(task.id);
+      setTaskAttachments(attachments);
+    } catch (error) {
+      console.error('Error fetching task attachments:', error);
+      setTaskAttachments([]);
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
+
+  const closeTaskDetail = () => {
+    setTaskDetailOpen(false);
+    setSelectedTask(null);
+    setTaskAttachments([]);
+  };
+
+  const openInApp = (url) => {
+    if (!url) return;
+    setWebUrl(url);
+    setWebOpen(true);
+  };
+
+  const closeWeb = () => {
+    setWebOpen(false);
+    setWebUrl(null);
+  };
+
+  const completedCount = tasks.filter((t) => t.status === 'completed').length;
+  const completionPercentage =
+    tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
 
   return (
     <LinearGradient colors={['#4ecdc4', '#44a08d']} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <Header 
-            title="Tareas" 
-            subtitle="Gestiona tus objetivos diarios"
-          />
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <Header title="Tareas" subtitle="Gestiona tus objetivos diarios" />
 
           {/* Progress Overview */}
           <View style={styles.progressOverview}>
             <View style={styles.progressCard}>
               <View style={styles.progressCircle}>
-                <Text style={styles.progressPercentage}>{completionPercentage}%</Text>
+                <Text style={styles.progressPercentage}>
+                  {completionPercentage}%
+                </Text>
               </View>
               <View style={styles.progressInfo}>
                 <Text style={styles.progressLabel}>Tareas Completadas</Text>
-                <Text style={styles.progressValue}>{completedCount} de {tasks.length}</Text>
+                <Text style={styles.progressValue}>
+                  {completedCount} de {tasks.length}
+                </Text>
               </View>
             </View>
           </View>
@@ -191,14 +272,254 @@ const TasksScreen = () => {
                 <TaskCard
                   key={task.id}
                   title={task.title}
-                  dueDate={task.due_date ? new Date(task.due_date).toLocaleDateString('es-ES') : 'Sin fecha'}
-                  priority={task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Media' : 'Baja'}
+                  description={task.description}
+                  dueDate={
+                    task.due_date
+                      ? new Date(task.due_date).toLocaleDateString('es-ES')
+                      : 'Sin fecha'
+                  }
+                  priority={
+                    task.priority === 'high'
+                      ? 'Alta'
+                      : task.priority === 'medium'
+                        ? 'Media'
+                        : 'Baja'
+                  }
                   completed={task.status === 'completed'}
-                  onPress={() => toggleTaskCompletion(task.id)}
+                  video_url={task.video_url || task.config?.video_url || null}
+                  media={task.config?.media || null}
+                  type={task.type}
+                  onPress={() => openTaskDetail(task)}
+                  onToggleComplete={() => toggleTaskCompletion(task.id)}
                 />
               ))
             )}
           </View>
+
+          {/* Task Detail Modal */}
+          <Modal
+            visible={taskDetailOpen}
+            transparent
+            animationType="slide"
+            onRequestClose={closeTaskDetail}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle} numberOfLines={2}>
+                    {selectedTask?.title || 'Tarea'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closeTaskDetail}
+                    style={styles.modalClose}
+                  >
+                    <Ionicons name="close" size={22} color="#111" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {selectedTask?.description ? (
+                    <Text style={styles.modalDescription}>
+                      {selectedTask.description}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.modalMetaRow}>
+                    <Text style={styles.modalMetaLabel}>Estado:</Text>
+                    <Text style={styles.modalMetaValue}>
+                      {selectedTask?.status === 'completed'
+                        ? 'Completada'
+                        : 'Pendiente'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalMetaRow}>
+                    <Text style={styles.modalMetaLabel}>Prioridad:</Text>
+                    <Text style={styles.modalMetaValue}>
+                      {selectedTask?.priority === 'high'
+                        ? 'Alta'
+                        : selectedTask?.priority === 'medium'
+                          ? 'Media'
+                          : 'Baja'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalMetaRow}>
+                    <Text style={styles.modalMetaLabel}>Fecha límite:</Text>
+                    <Text style={styles.modalMetaValue}>
+                      {selectedTask?.due_date
+                        ? new Date(selectedTask.due_date).toLocaleDateString(
+                            'es-ES'
+                          )
+                        : 'Sin fecha'}
+                    </Text>
+                  </View>
+
+                  {/* Show video from video_url, config.video_url, or config.media array */}
+                  {(selectedTask?.video_url || selectedTask?.config?.video_url || (selectedTask?.config?.media && selectedTask.config.media.length > 0)) ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={styles.modalSectionTitle}>Contenido</Text>
+                      
+                      {/* Video directo desde video_url o config.video_url */}
+                      {(selectedTask?.video_url || selectedTask?.config?.video_url) && (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            borderRadius: 12,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <VideoPlayer
+                            videoUrl={selectedTask.video_url || selectedTask.config?.video_url}
+                            title={selectedTask.title}
+                            style={{ height: 220 }}
+                            onOpen={openInApp}
+                          />
+                        </View>
+                      )}
+
+                      {/* Videos desde config.media array */}
+                      {selectedTask?.config?.media && selectedTask.config.media.length > 0 && (
+                        selectedTask.config.media.map((media, index) => (
+                          media.type === 'video' && media.url ? (
+                            <View
+                              key={index}
+                              style={{
+                                marginTop: 8,
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <VideoPlayer
+                                videoUrl={apiClient.normalizeSupabaseUrl(media.url)}
+                                title={media.name || `Video ${index + 1}`}
+                                style={{ height: 220 }}
+                                onOpen={openInApp}
+                              />
+                            </View>
+                          ) : null
+                        ))
+                      )}
+                    </View>
+                  ) : null}
+
+                  {/* Show task attachments (videos uploaded by admin) */}
+                  {taskAttachments.length > 0 && (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={styles.modalSectionTitle}>
+                        Archivos Adjuntos ({taskAttachments.length})
+                      </Text>
+                      {loadingAttachments ? (
+                        <ActivityIndicator size="small" color="#4ecdc4" style={{ marginTop: 10 }} />
+                      ) : (
+                        taskAttachments.map((attachment) => (
+                          attachment.file_type === 'video' ? (
+                            <View
+                              key={attachment.id}
+                              style={{
+                                marginTop: 8,
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <VideoPlayer
+                                videoUrl={apiClient.normalizeSupabaseUrl(attachment.file_url)}
+                                title={attachment.original_filename}
+                                style={{ height: 220 }}
+                                onOpen={openInApp}
+                              />
+                              {attachment.description && (
+                                <Text style={styles.attachmentDescription}>
+                                  {attachment.description}
+                                </Text>
+                              )}
+                            </View>
+                          ) : attachment.file_type === 'image' ? (
+                            <View
+                              key={attachment.id}
+                              style={{
+                                marginTop: 8,
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                                backgroundColor: '#f5f5f5',
+                              }}
+                            >
+                              <Text style={styles.attachmentName}>
+                                📎 {attachment.original_filename}
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => openInApp(apiClient.normalizeSupabaseUrl(attachment.file_url))}
+                                style={styles.viewAttachmentButton}
+                              >
+                                <Text style={styles.viewAttachmentText}>Ver archivo</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null
+                        ))
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalActionButton,
+                      selectedTask?.status === 'completed'
+                        ? styles.modalActionSecondary
+                        : styles.modalActionPrimary,
+                    ]}
+                    onPress={async () => {
+                      if (!selectedTask?.id) return;
+                      await toggleTaskCompletion(selectedTask.id);
+                    }}
+                  >
+                    <Text style={styles.modalActionText}>
+                      {selectedTask?.status === 'completed'
+                        ? 'Marcar como pendiente'
+                        : 'Marcar como completada'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* In-app WebView */}
+          <Modal
+            visible={webOpen}
+            animationType="slide"
+            onRequestClose={closeWeb}
+          >
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+              <View style={styles.webHeader}>
+                <TouchableOpacity onPress={closeWeb} style={styles.webClose}>
+                  <Ionicons name="chevron-back" size={24} color="#fff" />
+                  <Text style={styles.webCloseText}>Volver</Text>
+                </TouchableOpacity>
+              </View>
+              {webUrl ? (
+                <WebView
+                  source={{ uri: webUrl }}
+                  startInLoadingState
+                  renderLoading={() => (
+                    <View
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <ActivityIndicator size="large" color="#10b981" />
+                      <Text style={{ color: '#fff', marginTop: 12 }}>
+                        Cargando...
+                      </Text>
+                    </View>
+                  )}
+                />
+              ) : null}
+            </SafeAreaView>
+          </Modal>
 
           {/* Measurements Section */}
           <View style={styles.measurementsSection}>
@@ -206,35 +527,139 @@ const TasksScreen = () => {
               <Ionicons name="body" size={24} color="#fff" />
               <Text style={styles.sectionTitle}>Mediciones Corporales</Text>
             </View>
-            <Text style={styles.measurementsSubtitle}>Registra tus medidas para seguimiento</Text>
+            <Text style={styles.measurementsSubtitle}>
+              Registra tus medidas para seguimiento
+            </Text>
 
             <View style={styles.formContainer}>
               <View style={styles.inputGroup}>
+                <Text style={styles.label}>Peso (kg)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="scale"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej: 70"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    value={measurements.weight}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, weight: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Altura (cm)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej: 175"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    value={measurements.height}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, height: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Perímetro de Pecho (cm)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej: 95"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    value={measurements.chestPerimeter}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, chestPerimeter: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Perímetro de Cintura (cm)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej: 80"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    value={measurements.waistPerimeter}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, waistPerimeter: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Perímetro de Cadera (cm)</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej: 95"
+                    keyboardType="numeric"
+                    placeholderTextColor="#999"
+                    value={measurements.hipPerimeter}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, hipPerimeter: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
                 <Text style={styles.label}>Perímetro de Pierna (cm)</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons name="resize" size={18} color="#999" style={styles.inputIcon} />
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={styles.input}
                     placeholder="Ej: 50"
                     keyboardType="numeric"
                     placeholderTextColor="#999"
                     value={measurements.legPerimeter}
-                    onChangeText={(value) => setMeasurements({...measurements, legPerimeter: value})}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Perímetro de Tren Superior (cm)</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="resize" size={18} color="#999" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ej: 90"
-                    keyboardType="numeric"
-                    placeholderTextColor="#999"
-                    value={measurements.upperBodyPerimeter}
-                    onChangeText={(value) => setMeasurements({...measurements, upperBodyPerimeter: value})}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, legPerimeter: value })
+                    }
                   />
                 </View>
               </View>
@@ -242,27 +667,42 @@ const TasksScreen = () => {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Perímetro de Brazo (cm)</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons name="resize" size={18} color="#999" style={styles.inputIcon} />
+                  <Ionicons
+                    name="resize"
+                    size={18}
+                    color="#999"
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={styles.input}
                     placeholder="Ej: 30"
                     keyboardType="numeric"
                     placeholderTextColor="#999"
                     value={measurements.armPerimeter}
-                    onChangeText={(value) => setMeasurements({...measurements, armPerimeter: value})}
+                    onChangeText={(value) =>
+                      setMeasurements({ ...measurements, armPerimeter: value })
+                    }
                   />
                 </View>
               </View>
 
               <TouchableOpacity
-                style={[styles.saveButton, savingMeasurements && styles.disabledButton]}
+                style={[
+                  styles.saveButton,
+                  savingMeasurements && styles.disabledButton,
+                ]}
                 onPress={handleSave}
                 disabled={savingMeasurements}
               >
                 {savingMeasurements ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Ionicons name="checkmark" size={20} color="#fff" style={styles.buttonIcon} />
+                  <Ionicons
+                    name="checkmark"
+                    size={20}
+                    color="#fff"
+                    style={styles.buttonIcon}
+                  />
                 )}
                 <Text style={styles.saveButtonText}>
                   {savingMeasurements ? 'Guardando...' : 'Guardar Medidas'}
@@ -408,6 +848,124 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  modalTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    paddingRight: 12,
+  },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  modalMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalMetaLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  modalMetaValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  modalSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalActions: {
+    marginTop: 12,
+  },
+  modalActionButton: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalActionPrimary: {
+    backgroundColor: '#10b981',
+  },
+  modalActionSecondary: {
+    backgroundColor: '#6b7280',
+  },
+  modalActionText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  webHeader: {
+    height: 48,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  webClose: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  webCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  attachmentDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  attachmentName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    padding: 12,
+  },
+  viewAttachmentButton: {
+    backgroundColor: '#4ecdc4',
+    padding: 10,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  viewAttachmentText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

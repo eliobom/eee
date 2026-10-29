@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "buildCommand": "npx expo export && node fix-scroll.js",
+  "outputDirectory": "dist",
+  "framework": null,
+  "installCommand": "npm install"
+}

@@ -4,21 +4,28 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Animated,
   Dimensions,
-  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import Header from '../components/Header';
 import ProgressCard from '../components/ProgressCard';
-import { API_BASE_URL } from '../config';
+import { apiClient } from '../apiClient';
+import { useAuth } from '../contexts/AuthContext';
 
-const { width } = Dimensions.get('window');
+// Enable scroll on web
+if (Platform.OS === 'web') {
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
+  }
+}
+
 
 const HomeScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -29,12 +36,15 @@ const HomeScreen = ({ navigation }) => {
     completedTasks: 0,
     totalTasks: 0,
     currentStreak: 0,
-    totalMinutes: 0
+    totalMinutes: 0,
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUserData();
+    if (user) {
+      apiClient.setCurrentUser(user);
+      fetchUserData();
+    }
 
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -59,56 +69,45 @@ const HomeScreen = ({ navigation }) => {
     try {
       setLoading(true);
 
-      // Fetch user profile
-      const profileResponse = await fetch(`${API_BASE_URL}/profile`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        setUserProfile(profileData);
+      // Fetch user profile from Supabase
+      try {
+        const profileData = await apiClient.getSupabaseProfile();
+        if (profileData) {
+          setUserProfile(profileData);
+        }
+      } catch (profileError) {
+        console.error('Error fetching profile:', profileError);
       }
 
-      // Fetch user tasks for stats
-      const tasksResponse = await fetch(`${API_BASE_URL}/tasks`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
+      // Fetch user tasks from Supabase
       let completedTasks = 0;
       let totalTasks = 0;
-      if (tasksResponse.ok) {
-        const tasksData = await tasksResponse.json();
+      try {
+        const tasksData = await apiClient.getSupabaseTasks();
         totalTasks = tasksData.length;
-        completedTasks = tasksData.filter(task => task.status === 'completed').length;
+        completedTasks = tasksData.filter(
+          (task) => task.status === 'completed'
+        ).length;
+      } catch (tasksError) {
+        console.log('No tasks from Supabase');
       }
 
-      // Fetch live classes
-      const liveClassesResponse = await fetch(`${API_BASE_URL}/live-classes`, {
-        headers: {
-          'Authorization': `Bearer ${global.token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (liveClassesResponse.ok) {
-        const liveClassesData = await liveClassesResponse.json();
+      // Fetch live classes from Supabase
+      try {
+        const liveClassesData = await apiClient.getSupabaseLiveClasses();
         setLiveClasses(liveClassesData || []);
+      } catch (liveError) {
+        console.log('No live classes from Supabase');
+        setLiveClasses([]);
       }
 
-      // Calculate stats (simplified for now)
+      // Calculate stats
       setUserStats({
         completedTasks,
         totalTasks,
-        currentStreak: 0, // TODO: calculate from tasks
-        totalMinutes: 0, // TODO: calculate from measurements or tasks
+        currentStreak: 0,
+        totalMinutes: 0,
       });
-
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
@@ -156,24 +155,42 @@ const HomeScreen = ({ navigation }) => {
   ];
 
   return (
-    <LinearGradient colors={['#0f0f23', '#1a1a2e', '#16213e']} style={styles.container}>
+    <LinearGradient
+      colors={['#0f0f23', '#1a1a2e', '#16213e']}
+      style={styles.container}
+    >
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
           style={{
             opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }]
+            transform: [{ translateY: slideAnim }],
           }}
         >
           {/* Welcome Section */}
-          <Animated.View style={[styles.welcomeSection, { transform: [{ scale: scaleAnim }] }]}>
+          <Animated.View
+            style={[
+              styles.welcomeSection,
+              { transform: [{ scale: scaleAnim }] },
+            ]}
+          >
             <View style={styles.welcomeContent}>
-              <MaterialCommunityIcons name="dumbbell" size={60} color="#00d4aa" />
+              <MaterialCommunityIcons
+                name="dumbbell"
+                size={60}
+                color="#00d4aa"
+              />
               <Text style={styles.welcomeTitle}>
-                ¡Hola{userProfile ? `, ${userProfile.full_name || userProfile.username}` : ''}!
+                ¡Hola
+                {userProfile
+                  ? `, ${userProfile.full_name || userProfile.username}`
+                  : ''}
+                !
               </Text>
-              <Text style={styles.welcomeSubtitle}>¿Listo para conquistar tus objetivos hoy?</Text>
+              <Text style={styles.welcomeSubtitle}>
+                ¿Listo para conquistar tus objetivos hoy?
+              </Text>
             </View>
           </Animated.View>
 
@@ -181,22 +198,52 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.statsSection}>
             <Text style={styles.sectionTitle}>📊 Tu Progreso Hoy</Text>
             <View style={styles.statsGrid}>
-              <View style={[styles.statBox, { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: '#10b981' }]}>
-                <View style={[styles.statIconBg, { backgroundColor: '#10b981' }]}>
+              <View
+                style={[
+                  styles.statBox,
+                  {
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderColor: '#10b981',
+                  },
+                ]}
+              >
+                <View
+                  style={[styles.statIconBg, { backgroundColor: '#10b981' }]}
+                >
                   <Ionicons name="checkmark-circle" size={24} color="#fff" />
                 </View>
                 <Text style={styles.statValue}>{userStats.completedTasks}</Text>
                 <Text style={styles.statLabel}>Completadas</Text>
               </View>
-              <View style={[styles.statBox, { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: '#f59e0b' }]}>
-                <View style={[styles.statIconBg, { backgroundColor: '#f59e0b' }]}>
+              <View
+                style={[
+                  styles.statBox,
+                  {
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderColor: '#f59e0b',
+                  },
+                ]}
+              >
+                <View
+                  style={[styles.statIconBg, { backgroundColor: '#f59e0b' }]}
+                >
                   <Ionicons name="time" size={24} color="#fff" />
                 </View>
                 <Text style={styles.statValue}>{userStats.totalMinutes}</Text>
                 <Text style={styles.statLabel}>Minutos</Text>
               </View>
-              <View style={[styles.statBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }]}>
-                <View style={[styles.statIconBg, { backgroundColor: '#ef4444' }]}>
+              <View
+                style={[
+                  styles.statBox,
+                  {
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    borderColor: '#ef4444',
+                  },
+                ]}
+              >
+                <View
+                  style={[styles.statIconBg, { backgroundColor: '#ef4444' }]}
+                >
                   <Ionicons name="flame" size={24} color="#fff" />
                 </View>
                 <Text style={styles.statValue}>{userStats.currentStreak}</Text>
@@ -265,7 +312,9 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.upcomingSection}>
             <View style={styles.upcomingHeader}>
               <Text style={styles.sectionTitle}>📅 Próximas Clases</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('LiveClasses')}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('LiveClasses')}
+              >
                 <Text style={styles.viewAll}>Ver todas →</Text>
               </TouchableOpacity>
             </View>
@@ -278,18 +327,39 @@ const HomeScreen = ({ navigation }) => {
                   end={{ x: 1, y: 1 }}
                 >
                   <Text style={styles.upcomingHour}>
-                    {liveClasses[0].scheduled_at ? new Date(liveClasses[0].scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                    {liveClasses[0].scheduled_at
+                      ? new Date(
+                          liveClasses[0].scheduled_at
+                        ).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '--:--'}
                   </Text>
                   <Text style={styles.upcomingDate}>
-                    {liveClasses[0].scheduled_at ? new Date(liveClasses[0].scheduled_at).toLocaleDateString('es-ES', { weekday: 'short' }) : 'Próxima'}
+                    {liveClasses[0].scheduled_at
+                      ? new Date(
+                          liveClasses[0].scheduled_at
+                        ).toLocaleDateString('es-ES', { weekday: 'short' })
+                      : 'Próxima'}
                   </Text>
                 </LinearGradient>
                 <View style={styles.upcomingInfo}>
-                  <Text style={styles.upcomingTitle}>🏋️ {liveClasses[0].title || 'Clase en Vivo'}</Text>
-                  <Text style={styles.upcomingInstructor}>Con {liveClasses[0].trainer_name || 'Entrenador'}</Text>
+                  <Text style={styles.upcomingTitle}>
+                    🏋️ {liveClasses[0].title || 'Clase en Vivo'}
+                  </Text>
+                  <Text style={styles.upcomingInstructor}>
+                    Con {liveClasses[0].trainer_name || 'Entrenador'}
+                  </Text>
                   <View style={styles.upcomingTags}>
-                    <Text style={styles.tag}>{liveClasses[0].duration || 45} min</Text>
-                    <Text style={styles.tag}>{liveClasses[0].status === 'live' ? 'En Vivo' : 'Programada'}</Text>
+                    <Text style={styles.tag}>
+                      {liveClasses[0].duration || 45} min
+                    </Text>
+                    <Text style={styles.tag}>
+                      {liveClasses[0].status === 'live'
+                        ? 'En Vivo'
+                        : 'Programada'}
+                    </Text>
                   </View>
                 </View>
                 <TouchableOpacity style={styles.joinButton}>
@@ -303,7 +373,9 @@ const HomeScreen = ({ navigation }) => {
               </View>
             ) : (
               <View style={styles.emptyUpcoming}>
-                <Text style={styles.emptyUpcomingText}>No hay clases programadas</Text>
+                <Text style={styles.emptyUpcomingText}>
+                  No hay clases programadas
+                </Text>
               </View>
             )}
           </View>
@@ -314,7 +386,11 @@ const HomeScreen = ({ navigation }) => {
               colors={['rgba(0, 212, 170, 0.1)', 'rgba(0, 184, 148, 0.1)']}
               style={styles.quoteCard}
             >
-              <MaterialCommunityIcons name="lightning-bolt" size={30} color="#00d4aa" />
+              <MaterialCommunityIcons
+                name="lightning-bolt"
+                size={30}
+                color="#00d4aa"
+              />
               <Text style={styles.quoteText}>
                 "La única forma de hacer un gran trabajo es amar lo que haces"
               </Text>
